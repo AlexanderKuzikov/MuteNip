@@ -31,8 +31,8 @@
 ## Сборка
 
 ```bash
-git clone https://github.com/AlexanderKuzikov/mutenip.git
-cd mutenip
+git clone https://github.com/AlexanderKuzikov/MuteNip.git
+cd MuteNip
 
 go build -ldflags="-s -w -H windowsgui" -o mutenip.exe .
 ```
@@ -81,7 +81,7 @@ ffmpeg -hide_banner -nostdin -y -i input.mp4 \
 ## Структура
 
 ```
-mutenip/
+MuteNip/
 ├── main.go          # окно WebView2, loopback-сервер, режимы запуска
 ├── api.go           # HTTP-контракт для UI
 ├── fs.go            # диски и список папок для навигации
