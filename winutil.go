@@ -12,13 +12,21 @@ import (
 )
 
 var (
-	user32          = syscall.NewLazyDLL("user32.dll")
-	procMsgBox      = user32.NewProc("MessageBoxW")
-	kernel32        = syscall.NewLazyDLL("kernel32.dll")
-	procCreateMutex = kernel32.NewProc("CreateMutexW")
+	user32              = syscall.NewLazyDLL("user32.dll")
+	procMsgBox          = user32.NewProc("MessageBoxW")
+	procLoadIcon        = user32.NewProc("LoadIconW")
+	procSendMessage     = user32.NewProc("SendMessageW")
+	kernel32            = syscall.NewLazyDLL("kernel32.dll")
+	procCreateMutex     = kernel32.NewProc("CreateMutexW")
+	procGetModuleHandle = kernel32.NewProc("GetModuleHandleW")
 )
 
-const errorAlreadyExists = 183
+const (
+	errorAlreadyExists = 183
+	wmSetIcon          = 0x0080
+	iconSmall          = 0
+	iconBig            = 1
+)
 
 var errAlreadyRunning = errors.New("another MuteNip instance is already running")
 
@@ -70,6 +78,20 @@ func msgBox(title, text string) {
 		uintptr(unsafe.Pointer(titlePtr)),
 		0x30, // MB_ICONWARNING | MB_OK
 	)
+}
+
+// setWindowIcon ставит иконку приложения (ресурс #1 из exe) в заголовок
+// окна и панель задач — WebView2 сам её не наследует.
+func setWindowIcon(hwnd unsafe.Pointer) {
+	hInst, _, _ := procGetModuleHandle.Call(0)
+	icon, _, _ := procLoadIcon.Call(hInst, 1)
+	if icon == 0 {
+		log.Printf("window icon: resource #1 not found")
+		return
+	}
+	procSendMessage.Call(uintptr(hwnd), wmSetIcon, iconBig, icon)
+	procSendMessage.Call(uintptr(hwnd), wmSetIcon, iconSmall, icon)
+	log.Printf("window icon: set")
 }
 
 func fatalBox(err error) {

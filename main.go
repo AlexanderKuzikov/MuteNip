@@ -97,6 +97,7 @@ func runWebView(addr string) {
 	defer w.Destroy()
 	w.SetTitle("MuteNip — remove audio from video")
 	w.SetSize(1120, 820, webview.HintNone)
+	setWindowIcon(w.Window())
 	w.Navigate("http://" + addr + "/")
 	w.Run()
 }

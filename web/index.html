@@ -21,8 +21,7 @@
     <div class="banner" id="banner" hidden></div>
 
     <section class="topbar" id="topbar">
-      <button id="choose" class="btn">Выбрать папку</button>
-      <div class="root-path muted" id="root-path">Папка не выбрана</div>
+      <div class="root-path muted" id="root-path">Выберите папку в панели слева</div>
       <div class="scan-inline" id="scan-inline" hidden>
         <span id="scan-text">Сканирование…</span>
         <div class="bar slim"><div class="bar-fill" id="scan-bar"></div></div>
@@ -31,49 +30,51 @@
       <button id="rescan" class="btn ghost" hidden>Пересканировать</button>
     </section>
 
-    <section class="welcome card" id="welcome">
-      <h2>Видео без звука за пару секунд</h2>
-      <p>MuteNip не перекодирует видео: он выкидывает аудиодорожку и переписывает контейнер. Качество картинки не меняется, файл становится меньше.</p>
-      <ol>
-        <li>Выберите папку — инструмент найдёт видео и в подпапках.</li>
-        <li>Отметьте файлы или целые папки слева. Показана примерная экономия.</li>
-        <li>Нажмите «Удалить звук»: рядом появится копия <code>_na</code> или исходник будет заменён, если включить удаление.</li>
-      </ol>
-    </section>
-
-    <main class="workspace" id="workspace" hidden>
+    <main class="workspace" id="workspace">
       <aside class="sidebar card">
         <div class="sidebar-head">
           <span>Папки</span>
-          <span class="muted small" id="sidebar-head-count"></span>
+          <button id="tree-refresh" class="link-btn" title="Обновить список папок">обновить</button>
         </div>
         <nav class="tree" id="tree"></nav>
-        <div class="sidebar-foot" id="sidebar-foot"></div>
+        <div class="sidebar-foot" id="sidebar-foot">Выберите папку</div>
       </aside>
 
       <section class="content card">
-        <div class="content-bar">
-          <div class="crumbs" id="crumbs"></div>
-          <input id="search" class="search" type="search" placeholder="Поиск по списку" autocomplete="off" spellcheck="false">
+        <div class="content-welcome" id="content-welcome">
+          <h2>Выберите папку в панели слева</h2>
+          <p>MuteNip найдёт видео в выбранной папке и во всех подпапках. Панель слева постоянная: по ней можно ходить по диску, не открывая диалогов.</p>
+          <ol>
+            <li>Раскройте диск и щёлкните папку — она станет корнем сканирования.</li>
+            <li>Отметьте файлы или целые папки; примерная экономия видна сразу.</li>
+            <li>«Удалить звук» оставит копию <code>_na</code> или заменит исходники, если включить удаление.</li>
+          </ol>
         </div>
 
-        <div class="table-head" id="table-head">
-          <label class="check"><input type="checkbox" id="select-all" aria-label="Выбрать все"></label>
-          <button class="th sortable" data-sort="name">Файл <span class="arrow"></span></button>
-          <button class="th sortable num" data-sort="duration">Время <span class="arrow"></span></button>
-          <button class="th sortable num" data-sort="size">Размер <span class="arrow"></span></button>
-          <span class="th">Звук</span>
-          <button class="th sortable num" data-sort="savings">Экономия <span class="arrow"></span></button>
+        <div class="content-main" id="content-main" hidden>
+          <div class="content-bar">
+            <div class="crumbs" id="crumbs"></div>
+            <input id="search" class="search" type="search" placeholder="Поиск по списку" autocomplete="off" spellcheck="false">
+          </div>
+
+          <div class="table-head" id="table-head">
+            <label class="check"><input type="checkbox" id="select-all" aria-label="Выбрать все"></label>
+            <button class="th sortable" data-sort="name">Файл <span class="arrow"></span></button>
+            <button class="th sortable num" data-sort="duration">Время <span class="arrow"></span></button>
+            <button class="th sortable num" data-sort="size">Размер <span class="arrow"></span></button>
+            <span class="th">Звук</span>
+            <button class="th sortable num" data-sort="savings">Экономия <span class="arrow"></span></button>
+          </div>
+
+          <div class="list" id="list"></div>
+
+          <div class="empty" id="empty" hidden>
+            <div class="empty-title">Здесь пусто</div>
+            <div class="empty-text" id="empty-text">Выберите другую папку или снимите фильтр поиска.</div>
+          </div>
+
+          <div class="content-foot" id="content-foot"></div>
         </div>
-
-        <div class="list" id="list"></div>
-
-        <div class="empty" id="empty" hidden>
-          <div class="empty-title">Здесь пусто</div>
-          <div class="empty-text" id="empty-text">Выберите другую папку или снимите фильтр поиска.</div>
-        </div>
-
-        <div class="content-foot" id="content-foot"></div>
       </section>
     </main>
 

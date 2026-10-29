@@ -3,6 +3,7 @@ const $ = (id) => document.getElementById(id);
 const state = {
   dir: "",
   scan: null,
+  scanRoot: null,
   view: "",
   query: "",
   sortKey: "name",
@@ -16,6 +17,8 @@ const state = {
   procToken: 0,
   proc: null,
   resultDir: "",
+  fsLoaded: false,
+  drives: [],
 };
 
 function el(tag, cls, text) {
@@ -128,19 +131,17 @@ async function init() {
     state.toolsReady = !!tools.ready;
     if (state.toolsReady) {
       $("tools-chip").hidden = false;
-      $("choose").disabled = false;
     } else {
       $("tools-chip").hidden = true;
-      $("choose").disabled = true;
       showBanner(tools.error || "ffmpeg/ffprobe не найдены");
     }
   } catch (e) {
     showBanner(e.message);
   }
 
-  $("choose").addEventListener("click", chooseFolder);
   $("rescan").addEventListener("click", () => state.dir && startScan(state.dir));
   $("scan-cancel").addEventListener("click", cancelScan);
+  $("tree-refresh").addEventListener("click", refreshTree);
   $("delete-source").addEventListener("change", () => setDeleting($("delete-source").checked));
   $("start").addEventListener("click", onStart);
   $("progress-cancel").addEventListener("click", cancelProcess);
@@ -164,26 +165,160 @@ async function init() {
     btn.addEventListener("click", () => onSort(btn.dataset.sort));
   });
 
+  await loadDrives();
+
   try {
     const cfg = await api("/api/config");
     if (cfg.last_dir && state.toolsReady) {
       await startScan(cfg.last_dir);
+      return;
     }
   } catch {
     // конфиг не критичен
   }
+  render(true);
 }
 
-async function chooseFolder() {
+function normPath(p) {
+  return p.replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+}
+
+function withinRoot(p) {
+  if (!state.dir) return false;
+  const root = normPath(state.dir);
+  const path = normPath(p);
+  return path === root || path.startsWith(root + "\\");
+}
+
+function relToRoot(p) {
+  if (!state.dir) return "";
+  const root = state.dir.replace(/[\\/]+$/, "");
+  const path = p.replace(/[\\/]+$/, "");
+  if (normPath(path) === normPath(root)) return "";
+  if (path.length <= root.length) return "";
+  return path.slice(root.length).replace(/^[\\/]+/, "").replace(/\\/g, "/");
+}
+
+function makeFsNode(name, path, depth, isDrive) {
+  return {
+    name,
+    path,
+    depth,
+    isDrive: !!isDrive,
+    expanded: false,
+    loaded: false,
+    loading: false,
+    loadingPromise: null,
+    error: "",
+    children: [],
+  };
+}
+
+async function loadDrives() {
   try {
-    const res = await api("/api/folder", "POST", {});
-    if (res.path) await startScan(res.path);
+    const res = await api("/api/fs/drives");
+    state.drives = ((res && res.drives) || []).map((d) => makeFsNode(d.name, d.path, 0, true));
   } catch (e) {
-    showBanner(e.message);
+    showBanner("Не удалось получить список дисков: " + e.message);
+  }
+  state.fsLoaded = true;
+  render(true);
+}
+
+function loadChildren(node) {
+  if (node.loaded) return Promise.resolve();
+  if (node.loadingPromise) return node.loadingPromise;
+  node.loading = true;
+  node.loadingPromise = api("/api/fs/list?path=" + encodeURIComponent(node.path))
+    .then((res) => {
+      node.children = ((res && res.dirs) || []).map((d) => makeFsNode(d.name, d.path, node.depth + 1, false));
+      node.error = (res && res.error) || "";
+      node.loaded = true;
+    })
+    .catch((err) => {
+      node.error = err.message;
+      node.loaded = true;
+    })
+    .finally(() => {
+      node.loading = false;
+      node.loadingPromise = null;
+      render();
+    });
+  render();
+  return node.loadingPromise;
+}
+
+async function toggleExpand(node) {
+  node.expanded = !node.expanded;
+  render();
+  if (node.expanded && !node.loaded) {
+    await loadChildren(node);
   }
 }
 
+async function revealPath(path) {
+  const target = path.replace(/[\\/]+$/, "");
+  const letter = target.slice(0, 2);
+  const drive = state.drives.find((d) => d.isDrive && normPath(d.path) === normPath(letter));
+  if (!drive) return;
+
+  let node = drive;
+  node.expanded = true;
+  await loadChildren(node);
+
+  let prefix = drive.path.replace(/[\\/]+$/, "");
+  const rest = target.slice(2).split(/[\\/]/).filter(Boolean);
+  for (const part of rest) {
+    const wanted = normPath(prefix + "\\" + part);
+    const child = node.children.find((c) => normPath(c.path) === wanted);
+    if (!child) break;
+    child.expanded = true;
+    node = child;
+    prefix = prefix + "\\" + part;
+    await loadChildren(child);
+  }
+
+  render();
+  scrollActiveIntoView("center");
+}
+
+async function refreshTree() {
+  state.fsLoaded = false;
+  state.drives = [];
+  render(true);
+  await loadDrives();
+  if (state.dir) await revealPath(state.dir);
+}
+
+function onFsNodeClick(node, inRoot) {
+  if (node.isDrive) {
+    toggleExpand(node);
+    return;
+  }
+  if (inRoot) {
+    state.view = relToRoot(node.path);
+    state.lastIndex = -1;
+    render(true);
+    if (!node.expanded) {
+      node.expanded = true;
+      loadChildren(node);
+    }
+    scrollActiveIntoView("nearest");
+    return;
+  }
+  startScan(node.path);
+}
+
+function scrollActiveIntoView(block = "nearest") {
+  const active = document.querySelector(".tree-item.active");
+  if (active) active.scrollIntoView({ block });
+}
+
 async function startScan(dir) {
+  if (!state.toolsReady) {
+    showBanner("ffmpeg/ffprobe не найдены — сканирование недоступно.");
+    return;
+  }
   try {
     await api("/api/scan", "POST", { dir });
   } catch (e) {
@@ -191,7 +326,7 @@ async function startScan(dir) {
     return;
   }
 
-  const sameDir = dir === state.dir;
+  const sameDir = normPath(dir) === normPath(state.dir);
   state.dir = dir;
   if (!sameDir) {
     state.view = "";
@@ -207,12 +342,8 @@ async function startScan(dir) {
   $("root-path").textContent = dir;
   $("root-path").title = dir;
   $("root-path").classList.remove("muted");
-  $("welcome").hidden = true;
-  $("workspace").hidden = false;
-  $("actionbar").hidden = false;
   $("rescan").hidden = false;
   $("rescan").disabled = true;
-  $("choose").disabled = true;
   $("scan-inline").hidden = false;
   $("scan-cancel").hidden = false;
   $("scan-cancel").disabled = false;
@@ -221,6 +352,7 @@ async function startScan(dir) {
   hideBanner();
 
   render(true);
+  revealPath(dir);
   pollScan(state.scanToken);
 }
 
@@ -229,7 +361,7 @@ async function cancelScan() {
   try {
     await api("/api/scan/cancel", "POST", {});
   } catch {
-    // следующий опрос сам покажет состояние
+    // следующий опрос покажет состояние
   }
 }
 
@@ -262,7 +394,6 @@ async function pollScan(token) {
 
 function finishScan(st) {
   $("scan-inline").hidden = true;
-  $("choose").disabled = !state.toolsReady;
   $("rescan").disabled = false;
   if (st.error) {
     showBanner(st.error);
@@ -327,17 +458,14 @@ function findNode(node, path) {
 function render(resetScroll) {
   const files = (state.scan && state.scan.files) || [];
   const root = buildTree(files);
-
-  if (state.view && !findNode(root, state.view)) {
-    state.view = "";
-  }
+  state.scanRoot = root;
 
   const listEl = $("list");
   const treeEl = $("tree");
   const listScroll = listEl.scrollTop;
   const treeScroll = treeEl.scrollTop;
 
-  renderTree(root);
+  renderSidebarTree(root);
   const visible = visibleFiles(root);
   state.visible = visible;
   renderRows(visible);
@@ -345,72 +473,121 @@ function render(resetScroll) {
   renderFooters(files);
   renderSortMarks();
 
-  $("sidebar-head-count").textContent = files.length ? String(files.length) : "";
-  $("content-foot").textContent = files.length
-    ? `Показано ${visible.length} из ${files.length}`
-    : "";
+  const hasDir = !!state.dir;
+  $("content-welcome").hidden = hasDir;
+  $("content-main").hidden = !hasDir;
+  $("actionbar").hidden = !hasDir;
+
+  $("content-foot").textContent = files.length ? `Показано ${visible.length} из ${files.length}` : "";
 
   if (resetScroll) {
     listEl.scrollTop = 0;
-    treeEl.scrollTop = 0;
   } else {
     listEl.scrollTop = listScroll;
-    treeEl.scrollTop = treeScroll;
+  }
+  treeEl.scrollTop = treeScroll;
+}
+
+function renderSidebarTree(scanRoot) {
+  const treeEl = $("tree");
+  treeEl.textContent = "";
+  if (!state.fsLoaded) {
+    treeEl.appendChild(el("div", "tree-msg", "Загрузка дисков…"));
+    return;
+  }
+  if (!state.drives.length) {
+    treeEl.appendChild(el("div", "tree-msg", "Диски не найдены"));
+    return;
+  }
+  for (const drive of state.drives) {
+    appendFsNode(treeEl, drive, scanRoot);
   }
 }
 
-function renderTree(root) {
-  const treeEl = $("tree");
-  treeEl.textContent = "";
-  const walk = (node, depth) => {
-    treeEl.appendChild(treeItem(node, depth));
-    for (const kid of node.sortedChildren || []) walk(kid, depth + 1);
-  };
-  walk(root, 0);
-}
+function appendFsNode(container, node, scanRoot) {
+  const inRoot = withinRoot(node.path);
+  const rel = inRoot ? relToRoot(node.path) : "";
+  const scanNode = inRoot ? findNode(scanRoot, rel) : null;
 
-function treeItem(node, depth) {
   const item = el("div", "tree-item");
-  item.style.setProperty("--depth", String(depth));
-  if (state.view === node.path) item.classList.add("active");
+  item.style.setProperty("--depth", String(node.depth));
+  if (state.dir && normPath(node.path) === normPath(state.dir)) item.classList.add("scan-root");
+  if (inRoot && state.view === rel) item.classList.add("active");
 
-  const box = el("input");
-  box.type = "checkbox";
-  const eligible = node.eligible.length;
-  const chosen = node.eligible.filter((p) => state.selected.has(p)).length;
-  box.checked = eligible > 0 && chosen === eligible;
-  box.indeterminate = chosen > 0 && chosen < eligible;
-  box.disabled = eligible === 0;
-  box.title = eligible ? `Выбрать всё: ${eligible}` : "Нет файлов со звуком";
-  box.addEventListener("click", (e) => e.stopPropagation());
-  box.addEventListener("change", () => {
-    if (box.checked) {
-      for (const p of node.eligible) state.selected.add(p);
-    } else {
-      for (const p of node.eligible) state.selected.delete(p);
-    }
-    state.lastIndex = -1;
-    render();
+  const arrow = el("button", "tree-arrow" + (node.expanded ? " open" : ""), node.expanded ? "▾" : "▸");
+  arrow.type = "button";
+  arrow.title = node.expanded ? "Свернуть" : "Развернуть";
+  if (node.loading) arrow.textContent = "…";
+  arrow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleExpand(node);
   });
-  const wrap = el("label", "check");
-  wrap.appendChild(box);
+
+  let checkCell;
+  if (inRoot && scanNode) {
+    const box = el("input");
+    box.type = "checkbox";
+    const eligible = scanNode.eligible;
+    const chosen = eligible.filter((p) => state.selected.has(p)).length;
+    box.checked = eligible.length > 0 && chosen === eligible.length;
+    box.indeterminate = chosen > 0 && chosen < eligible.length;
+    box.disabled = eligible.length === 0;
+    box.title = eligible.length ? `Выбрать всё в этой папке: ${eligible.length}` : "Нет файлов со звуком";
+    box.addEventListener("click", (e) => e.stopPropagation());
+    box.addEventListener("change", () => {
+      if (box.checked) {
+        for (const p of eligible) state.selected.add(p);
+      } else {
+        for (const p of eligible) state.selected.delete(p);
+      }
+      state.lastIndex = -1;
+      render();
+    });
+    checkCell = el("label", "check");
+    checkCell.appendChild(box);
+  } else {
+    checkCell = el("span", "check-spacer");
+  }
 
   const label = el("button", "tree-label");
   label.type = "button";
-  label.title = node.path || "Все файлы";
+  label.title = node.path;
   label.appendChild(el("span", "tree-name", node.name));
-  label.addEventListener("click", () => {
-    state.view = node.path;
-    state.lastIndex = -1;
-    render(true);
-  });
+  label.addEventListener("click", () => onFsNodeClick(node, inRoot));
 
-  const badge = el("span", "badge", eligible ? String(eligible) : "");
-  if (!eligible) badge.classList.add("empty");
-  badge.title = `${node.count} видео · ${eligible} со звуком`;
+  const badge = el("span", "badge");
+  if (inRoot && scanNode && scanNode.eligible.length) {
+    badge.textContent = String(scanNode.eligible.length);
+    badge.title = `${scanNode.count} видео · ${scanNode.eligible.length} со звуком`;
+  } else {
+    badge.classList.add("hidden");
+  }
 
-  item.append(wrap, label, badge);
-  return item;
+  item.append(arrow, checkCell, label, badge);
+  container.appendChild(item);
+
+  if (!node.expanded) return;
+  if (node.loading) {
+    container.appendChild(treeMessage("Загрузка…", node.depth + 1, ""));
+    return;
+  }
+  if (node.error) {
+    container.appendChild(treeMessage(node.error, node.depth + 1, "err"));
+    return;
+  }
+  if (!node.children.length) {
+    container.appendChild(treeMessage("Пусто", node.depth + 1, ""));
+    return;
+  }
+  for (const child of node.children) {
+    appendFsNode(container, child, scanRoot);
+  }
+}
+
+function treeMessage(text, depth, cls) {
+  const msg = el("div", "tree-msg" + (cls ? " " + cls : ""), text);
+  msg.style.setProperty("--depth", String(depth));
+  return msg;
 }
 
 function visibleFiles(root) {
@@ -464,7 +641,10 @@ function renderRows(list) {
     if (state.query.trim()) {
       text = "По фильтру ничего не нашлось.";
     } else if (files.length) {
-      text = "В этой папке нет видео напрямую. Видео из подпапок — в дереве слева.";
+      const node = state.view ? findNode(state.scanRoot, state.view) : null;
+      text = state.view && !node
+        ? "В этой папке нет видео."
+        : "В этой папке нет видео напрямую. Видео из подпапок — в дереве слева.";
     } else if (state.scan && state.scan.running) {
       text = "Ищу видео…";
     } else {
@@ -607,6 +787,7 @@ function crumbButton(text, view, current) {
     state.view = view;
     state.lastIndex = -1;
     render(true);
+    scrollActiveIntoView("nearest");
   });
   return btn;
 }
@@ -620,9 +801,15 @@ function renderFooters(files) {
     ? `Выбрано ${selected.length} из ${eligible.length} · звук ≈ ${fmtBytes(savings)}`
     : `Выбрано 0 из ${eligible.length}`;
 
-  $("sidebar-foot").textContent = files.length
-    ? `${files.length} ${plural(files.length, "видео", "видео", "видео")} · ${eligible.length} со звуком`
-    : (state.scan && state.scan.running ? "Сканирование…" : "Видео не найдено");
+  if (!state.dir) {
+    $("sidebar-foot").textContent = "Выберите папку";
+  } else if (files.length) {
+    $("sidebar-foot").textContent = `${files.length} видео · ${eligible.length} со звуком`;
+  } else if (state.scan && state.scan.running) {
+    $("sidebar-foot").textContent = "Сканирование…";
+  } else {
+    $("sidebar-foot").textContent = "Видео не найдено";
+  }
 
   const busy = (state.scan && state.scan.running) || (state.proc && state.proc.running);
   const start = $("start");

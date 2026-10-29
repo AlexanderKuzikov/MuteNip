@@ -92,7 +92,8 @@ func newApp(tools mute.Tools) *app {
 
 func (a *app) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/folder", a.handleFolder)
+	mux.HandleFunc("/api/fs/drives", a.handleFSDrives)
+	mux.HandleFunc("/api/fs/list", a.handleFSList)
 	mux.HandleFunc("/api/config", a.handleConfig)
 	mux.HandleFunc("/api/tools", a.handleTools)
 	mux.HandleFunc("/api/scan", a.handleScan)
@@ -109,18 +110,6 @@ func (a *app) routes() http.Handler {
 	}
 	mux.Handle("/", http.FileServer(http.FS(web)))
 	return mux
-}
-
-func (a *app) handleFolder(w http.ResponseWriter, r *http.Request) {
-	if !requirePOST(w, r) {
-		return
-	}
-	path, err := browseFolder("Выберите папку с видео")
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, map[string]string{"path": path})
 }
 
 func (a *app) handleConfig(w http.ResponseWriter, r *http.Request) {
@@ -169,13 +158,14 @@ func (a *app) handleScan(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) startScan(dir string) error {
 	a.mu.Lock()
-	if a.scan != nil && a.scan.running {
-		a.mu.Unlock()
-		return errors.New("сканирование уже идёт")
-	}
 	if a.proc != nil && a.proc.running {
 		a.mu.Unlock()
 		return errors.New("идёт удаление звука")
+	}
+	// Переключение папки на ходу не должно требовать ручной отмены:
+	// старая выборка гасится, её результаты больше никому не нужны.
+	if a.scan != nil && a.scan.running && a.scan.cancel != nil {
+		a.scan.cancel()
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	st := &scanState{running: true, cancel: cancel, dir: dir}
