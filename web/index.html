@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MuteNip</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+  <div class="app">
+    <header class="brand">
+      <div class="brand-text">
+        <h1>MuteNip</h1>
+        <p class="tagline">Убирает звук из видео без перекодирования</p>
+      </div>
+      <div class="tools-chip" id="tools-chip" hidden>движок готов</div>
+    </header>
+
+    <div class="banner" id="banner" hidden></div>
+
+    <section class="topbar" id="topbar">
+      <button id="choose" class="btn">Выбрать папку</button>
+      <div class="root-path muted" id="root-path">Папка не выбрана</div>
+      <div class="scan-inline" id="scan-inline" hidden>
+        <span id="scan-text">Сканирование…</span>
+        <div class="bar slim"><div class="bar-fill" id="scan-bar"></div></div>
+        <button id="scan-cancel" class="link-btn">Остановить</button>
+      </div>
+      <button id="rescan" class="btn ghost" hidden>Пересканировать</button>
+    </section>
+
+    <section class="welcome card" id="welcome">
+      <h2>Видео без звука за пару секунд</h2>
+      <p>MuteNip не перекодирует видео: он выкидывает аудиодорожку и переписывает контейнер. Качество картинки не меняется, файл становится меньше.</p>
+      <ol>
+        <li>Выберите папку — инструмент найдёт видео и в подпапках.</li>
+        <li>Отметьте файлы или целые папки слева. Показана примерная экономия.</li>
+        <li>Нажмите «Удалить звук»: рядом появится копия <code>_na</code> или исходник будет заменён, если включить удаление.</li>
+      </ol>
+    </section>
+
+    <main class="workspace" id="workspace" hidden>
+      <aside class="sidebar card">
+        <div class="sidebar-head">
+          <span>Папки</span>
+          <span class="muted small" id="sidebar-head-count"></span>
+        </div>
+        <nav class="tree" id="tree"></nav>
+        <div class="sidebar-foot" id="sidebar-foot"></div>
+      </aside>
+
+      <section class="content card">
+        <div class="content-bar">
+          <div class="crumbs" id="crumbs"></div>
+          <input id="search" class="search" type="search" placeholder="Поиск по списку" autocomplete="off" spellcheck="false">
+        </div>
+
+        <div class="table-head" id="table-head">
+          <label class="check"><input type="checkbox" id="select-all" aria-label="Выбрать все"></label>
+          <button class="th sortable" data-sort="name">Файл <span class="arrow"></span></button>
+          <button class="th sortable num" data-sort="duration">Время <span class="arrow"></span></button>
+          <button class="th sortable num" data-sort="size">Размер <span class="arrow"></span></button>
+          <span class="th">Звук</span>
+          <button class="th sortable num" data-sort="savings">Экономия <span class="arrow"></span></button>
+        </div>
+
+        <div class="list" id="list"></div>
+
+        <div class="empty" id="empty" hidden>
+          <div class="empty-title">Здесь пусто</div>
+          <div class="empty-text" id="empty-text">Выберите другую папку или снимите фильтр поиска.</div>
+        </div>
+
+        <div class="content-foot" id="content-foot"></div>
+      </section>
+    </main>
+
+    <footer class="actionbar card" id="actionbar" hidden>
+      <div class="sel" id="selinfo">Ничего не выбрано</div>
+      <label class="check danger"><input type="checkbox" id="delete-source"> Удалить исходники</label>
+      <button id="start" class="btn primary" disabled>Удалить звук</button>
+    </footer>
+  </div>
+
+  <div class="overlay" id="progress-overlay" hidden>
+    <div class="dialog">
+      <h2 id="progress-title">Удаляю звук</h2>
+      <div class="bar big"><div class="bar-fill" id="progress-bar"></div></div>
+      <div class="progress-line" id="progress-line">Подготовка…</div>
+      <div class="dialog-actions">
+        <button id="progress-cancel" class="btn ghost">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="confirm-overlay" hidden>
+    <div class="dialog">
+      <h2>Удалить исходники?</h2>
+      <p id="confirm-text"></p>
+      <p class="danger-text">После успешной проверки результата исходные файлы будут стёрты безвозвратно. Корзины нет.</p>
+      <div class="dialog-actions">
+        <button id="confirm-no" class="btn ghost">Отмена</button>
+        <button id="confirm-yes" class="btn danger">Удалить звук и файлы</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="result-overlay" hidden>
+    <div class="dialog">
+      <h2 id="result-title">Готово</h2>
+      <p id="result-summary" class="result-summary"></p>
+      <div id="result-notes" class="result-notes" hidden></div>
+      <div class="dialog-actions">
+        <button id="result-open" class="btn ghost">Открыть папку</button>
+        <button id="result-close" class="btn primary">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+
+</html>
